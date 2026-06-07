@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>অ্যাডভান্সড লাইভ টিভি প্লেয়ার</title>
+    <title>অ্যাডভান্সড লাইভ টিভি প্লেয়ার - ব্যাকআপ সহ</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         * {
@@ -27,7 +27,29 @@
             display: flex;
             flex-direction: column;
         }
-        /* ট্যাব সিস্টেম (সব চ্যানেল বনাম ফেভারিট) */
+        /* ব্যাকআপ বাটন এরিয়া */
+        .backup-box {
+            padding: 12px;
+            background-color: #0f0f0f;
+            border-bottom: 2px solid #2d2d2d;
+            text-align: center;
+        }
+        .backup-btn {
+            width: 100%;
+            padding: 10px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        .backup-btn:hover {
+            background-color: #388e3c;
+        }
+        /* ট্যাব সিস্টেম */
         .tab-box {
             display: flex;
             background-color: #0f0f0f;
@@ -35,7 +57,7 @@
         }
         .tab-btn {
             flex: 1;
-            padding: 15px;
+            padding: 12px;
             background: none;
             border: none;
             color: #aaa;
@@ -43,7 +65,7 @@
             cursor: pointer;
             transition: 0.3s;
             text-align: center;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
         }
         .tab-btn.active {
             color: #00bcd4;
@@ -80,7 +102,7 @@
             text-overflow: ellipsis;
             padding-right: 10px;
         }
-        /* অ্যাকশন বাটন সমূহ */
+        /* অ্যাকশন বাটন */
         .action-btns {
             display: flex;
             gap: 8px;
@@ -92,10 +114,9 @@
             color: #666;
             cursor: pointer;
             font-size: 1.2rem;
-            transition: color 0.2s;
         }
         .fav-btn.is-fav {
-            color: #ffca28; /* গোল্ডেন স্টার */
+            color: #ffca28;
         }
         .edit-btn {
             background: none;
@@ -146,12 +167,14 @@
 <body>
 
     <div class="sidebar">
+        <div class="backup-box">
+            <button class="backup-btn" onclick="downloadUpdatedPlaylist()">নতুন playlist.txt ডাউনলোড করুন</button>
+        </div>
         <div class="tab-box">
             <button class="tab-btn active" id="allTabBtn" onclick="switchTab('all')">সব চ্যানেল</button>
             <button class="tab-btn" id="favTabBtn" onclick="switchTab('fav')">★ ফেভারিট</button>
         </div>
-        <ul class="channel-list" id="channelList">
-            </ul>
+        <ul class="channel-list" id="channelList"></ul>
     </div>
 
     <div class="main-content">
@@ -167,15 +190,15 @@
     const playingChannelEl = document.getElementById('playingChannel');
     
     let db;
-    const dbName = "AdvancedTVDB";
-    const storeName = "user_settings"; // কাস্টম নাম এবং ফেভারিট সেভ রাখার জন্য
+    const dbName = "PermanentTVDB";
+    const storeName = "user_settings";
 
-    let txtLinks = []; // playlist.txt থেকে আসা মূল লিঙ্কগুলো
-    let currentTab = 'all'; // 'all' অথবা 'fav'
+    let txtLinks = []; 
+    let currentTab = 'all'; 
     let hls = null;
     let activeUrl = "";
 
-    // ১. ডাটাবেস ওপেন করা (নাম এবং ফেভারিট স্থায়ীভাবে রাখার জন্য)
+    // ১. ডাটাবেস সেটআপ
     const request = indexedDB.open(dbName, 1);
     request.onupgradeneeded = function(e) {
         db = e.target.result;
@@ -185,24 +208,30 @@
     };
     request.onsuccess = function(e) {
         db = e.target.result;
-        fetchPlaylist(); // ডাটাবেস প্রস্তুত হলে ফাইল রিড করা হবে
+        fetchPlaylist(); 
     };
 
-    // ২. playlist.txt থেকে লিঙ্কগুলো নিয়ে আসা
+    // ২. playlist.txt ফাইল পড়া
     async function fetchPlaylist() {
         try {
             const response = await fetch('playlist.txt');
             if (!response.ok) throw new Error("playlist.txt ফাইলটি পাওয়া যায়নি!");
             const textData = await response.text();
             
-            // লাইন বাই লাইন লিঙ্ক আলাদা করা
             const lines = textData.split('\n');
             let count = 1;
             lines.forEach(line => {
-                const url = line.trim();
-                if (url !== "" && url.startsWith('http')) {
-                    txtLinks.push({ defaultName: `Channel ${count}`, url: url });
-                    count++;
+                const trimmedLine = line.trim();
+                if (trimmedLine !== "") {
+                    // যদি ফাইলে অলরেডি কমা দিয়ে নাম এবং লিঙ্ক থাকে
+                    if (trimmedLine.includes(',')) {
+                        const parts = trimmedLine.split(',');
+                        txtLinks.push({ defaultName: parts[0].trim(), url: parts[1].trim() });
+                    } else if (trimmedLine.startsWith('http')) {
+                        // যদি শুধু লিঙ্ক থাকে
+                        txtLinks.push({ defaultName: `Channel ${count}`, url: trimmedLine });
+                        count++;
+                    }
                 }
             });
 
@@ -212,7 +241,7 @@
         }
     }
 
-    // ৩. ডাটাবেস থেকে ইউজারের সেভ করা নাম ও ফেভারিট ডেটা মিলিয়ে লিস্ট তৈরি করা
+    // ৩. ডেটাবেস এবং টেক্সট ফাইল কম্বাইন করা
     function loadUserSettingsAndRender() {
         const transaction = db.transaction([storeName], "readonly");
         const store = transaction.objectStore(storeName);
@@ -220,10 +249,8 @@
 
         getAllRequest.onsuccess = function() {
             const savedData = getAllRequest.result;
-            // ম্যাপ তৈরি করা যাতে দ্রুত ইউআরএল দিয়ে খোঁজা যায়
             const savedMap = new Map(savedData.map(item => [item.url, item]));
 
-            // ফাইনাল চ্যানেল লিস্ট তৈরি
             window.finalChannels = txtLinks.map(item => {
                 const userSetup = savedMap.get(item.url);
                 return {
@@ -235,23 +262,19 @@
 
             renderChannels();
 
-            // প্রথমবার অটো প্লে করার জন্য
             if (window.finalChannels.length > 0 && activeUrl === "") {
                 playStream(window.finalChannels[0].url, window.finalChannels[0].name);
                 activeUrl = window.finalChannels[0].url;
-                renderChannels(); // একটিভ কালার দেখানোর জন্য পুনরায় রেন্ডার
+                renderChannels();
             }
         };
     }
 
-    // ৪. স্ক্রিনে চ্যানেল বা ফেভারিট লিস্ট প্রদর্শন করা
+    // ৪. লিস্ট দেখানো
     function renderChannels() {
         channelListEl.innerHTML = '';
-        
         let filteredChannels = window.finalChannels || [];
-        if (currentTab === 'fav') {
-            filteredChannels = filteredChannels.filter(c => c.isFavorite);
-        }
+        if (currentTab === 'fav') filteredChannels = filteredChannels.filter(c => c.isFavorite);
 
         if (filteredChannels.length === 0) {
             channelListEl.innerHTML = `<li style="padding:20px; color:#aaa; text-align:center;">কোনো চ্যানেল নেই</li>`;
@@ -263,7 +286,6 @@
             li.classList.add('channel-item');
             if (channel.url === activeUrl) li.classList.add('active');
 
-            // নামের অংশ
             const nameSpan = document.createElement('span');
             nameSpan.classList.add('channel-name');
             nameSpan.textContent = channel.name;
@@ -273,21 +295,17 @@
                 renderChannels();
             });
 
-            // বাটন গ্রুপ (ফেভারিট এবং এডিট)
             const btnGroup = document.createElement('div');
             btnGroup.classList.add('action-btns');
 
-            // পেন্সিল/এডিট বাটন
             const editBtn = document.createElement('button');
             editBtn.classList.add('edit-btn');
             editBtn.innerHTML = "✏️";
-            editBtn.title = "নাম পরিবর্তন করুন";
             editBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 renameChannel(channel.url, channel.name);
             });
 
-            // স্টার/ফেভারিট বাটন
             const favBtn = document.createElement('button');
             favBtn.classList.add('fav-btn');
             favBtn.innerHTML = "★";
@@ -299,14 +317,13 @@
 
             btnGroup.appendChild(editBtn);
             btnGroup.appendChild(favBtn);
-            
             li.appendChild(nameSpan);
             li.appendChild(btnGroup);
             channelListEl.appendChild(li);
         });
     }
 
-    // ৫. ট্যাবে ক্লিক করলে পরিবর্তন হওয়া
+    // ৫. ট্যাব পরিবর্তন
     window.switchTab = function(tab) {
         currentTab = tab;
         document.getElementById('allTabBtn').classList.toggle('active', tab === 'all');
@@ -314,48 +331,65 @@
         renderChannels();
     };
 
-    // ৬. চ্যানেলের নাম পরিবর্তন ও সেভ করা
+    // ৬. নাম পরিবর্তন করা
     function renameChannel(url, currentName) {
         const newName = prompt(`"${currentName}" এর জন্য একটি নতুন নাম দিন:`, currentName);
-        if (newName === null) return; // ক্যানসেল করলে কিছু হবে না
+        if (newName === null) return;
         const finalName = newName.trim() === "" ? currentName : newName.trim();
 
         const transaction = db.transaction([storeName], "readwrite");
         const store = transaction.objectStore(storeName);
         
-        // প্রথমে আগের ডাটা চেক করা
         const getReq = store.get(url);
         getReq.onsuccess = function() {
             const data = getReq.result || { url: url, isFavorite: false };
             data.customName = finalName;
-            
             store.put(data).onsuccess = function() {
                 if(url === activeUrl) playingChannelEl.textContent = finalName;
-                loadUserSettingsAndRender(); // রিলোড লিস্ট
+                loadUserSettingsAndRender();
             };
         };
     }
 
-    // ৭. ফেভারিট অন/অফ করা এবং সেভ করা
+    // ৭. ফেভারিট সেট করা
     function toggleFavorite(url, favStatus, currentName) {
         const transaction = db.transaction([storeName], "readwrite");
         const store = transaction.objectStore(storeName);
-        
         const getReq = store.get(url);
         getReq.onsuccess = function() {
             const data = getReq.result || { url: url, customName: currentName };
             data.isFavorite = favStatus;
-            
-            store.put(data).onsuccess = function() {
-                loadUserSettingsAndRender(); // রিলোড লিস্ট
-            };
+            store.put(data).onsuccess = function() { loadUserSettingsAndRender(); };
         };
     }
 
-    // ৮. ভিডিও প্লে করার মেইন ফাংশন
+    // ৮. নামসহ প্লেলিস্ট ডাউনলোড করার নতুন ফাংশন (যা গিটহাবে পার্মানেন্ট করতে সাহায্য করবে)
+    window.downloadUpdatedPlaylist = function() {
+        if (!window.finalChannels || window.finalChannels.length === 0) {
+            alert("প্লেলিস্টে কোনো ডেটা নেই!");
+            return;
+        }
+
+        let fileContent = "";
+        window.finalChannels.forEach(channel => {
+            // "নাম, লিঙ্ক" ফরম্যাটে টেক্সট তৈরি হবে
+            fileContent += `${channel.name},${channel.url}\n`;
+        });
+
+        const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
+        const tempAnchor = document.createElement("a");
+        tempAnchor.href = URL.createObjectURL(blob);
+        tempAnchor.download = "playlist.txt"; // নাম অপরিবর্তিত থাকবে
+        
+        document.body.appendChild(tempAnchor);
+        tempAnchor.click();
+        document.body.removeChild(tempAnchor);
+    };
+
+    // ৯. ভিডিও প্লে
     function playStream(url, name) {
         playingChannelEl.textContent = name;
-        if (hls) { hls.destroy(); }
+        if (hls) hls.destroy();
 
         if (Hls.isSupported()) {
             hls = new Hls();
@@ -367,9 +401,7 @@
         } 
         else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = url;
-            video.addEventListener('loadedmetadata', () => {
-                video.play().catch(e => console.log("Autoplay blocked:", e));
-            });
+            video.addEventListener('loadedmetadata', () => { video.play().catch(e => console.log(e)); });
         }
     }
 </script>
