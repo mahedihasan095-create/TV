@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>অ্যাডভান্সড লাইভ টিভি প্লেয়ার - ব্যাকআপ সহ</title>
+    <title>স্মার্ট অটো-ডিটেক্ট লাইভ টিভি প্লেয়ার</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         * {
@@ -21,7 +21,7 @@
         }
         /* বাম পাশের সাইডবার */
         .sidebar {
-            width: 320px;
+            width: 340px;
             background-color: #1f1f1f;
             border-right: 2px solid #2d2d2d;
             display: flex;
@@ -95,13 +95,40 @@
             background-color: #22444d;
             border-left: 4px solid #00bcd4;
         }
-        .channel-name {
+        
+        /* লোগো এবং নাম একসাথে রাখার জন্য */
+        .channel-info-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             flex-grow: 1;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             padding-right: 10px;
         }
+        /* অটো জেনারেটেড স্মার্ট লোগো */
+        .channel-logo {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background-color: #00bcd4;
+            color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            flex-shrink: 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        .channel-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         /* অ্যাকশন বাটন */
         .action-btns {
             display: flex;
@@ -181,7 +208,7 @@
         <div class="player-container">
             <video id="videoPlayer" controls autoplay playsinline></video>
         </div>
-        <div class="current-title">এখন দেখছেন: <span id="playingChannel">লোড হচ্ছে...</span></div>
+        <div class="current-title">এখন দেখছেন: <span id="playingChannel">로드 중...</span></div>
     </div>
 
 <script>
@@ -190,13 +217,16 @@
     const playingChannelEl = document.getElementById('playingChannel');
     
     let db;
-    const dbName = "PermanentTVDB";
+    const dbName = "SmartTVDB";
     const storeName = "user_settings";
 
     let txtLinks = []; 
     let currentTab = 'all'; 
     let hls = null;
     let activeUrl = "";
+
+    // লোগোর ব্যাকগ্রাউন্ড কালার সুন্দর করার জন্য কিছু র্যান্ডম কালার প্যালেট
+    const colors = ['#00bcd4', '#ff4081', '#4caf50', '#ff9800', '#9c27b0', '#e91e63', '#009688', '#3f51b5'];
 
     // ১. ডাটাবেস সেটআপ
     const request = indexedDB.open(dbName, 1);
@@ -211,7 +241,29 @@
         fetchPlaylist(); 
     };
 
-    // ২. playlist.txt ফাইল পড়া
+    // ২. ইউআরএল থেকে অটোমেটিক নাম বের করার ম্যাজিক ফাংশন
+    function extractChannelName(url, fallbackCount) {
+        try {
+            const urlObj = new URL(url);
+            const pathParts = urlObj.pathname.split('/').filter(p => p !== "");
+            
+            if (pathParts.length > 0) {
+                // সাধারণত index.m3u8 এর ঠিক আগের অংশটিই চ্যানেলের নাম হয়
+                let detectedName = pathParts[pathParts.length - 1];
+                if (detectedName.toLowerCase().includes('index') || detectedName.toLowerCase().includes('playlist')) {
+                    detectedName = pathParts[pathParts.length - 2] || detectedName;
+                }
+                // নামের ভেতরের ড্যাশ বা ডট পরিষ্কার করা এবং প্রথম অক্ষর বড় হাতের করা
+                detectedName = detectedName.replace(/[-_.]/g, ' ');
+                return detectedName.charAt(0).toUpperCase() + detectedName.slice(1);
+            }
+        } catch (e) {
+            console.error("ইউআরএল পার্স করা যায়নি");
+        }
+        return `Channel ${fallbackCount}`;
+    }
+
+    // ৩. playlist.txt ফাইল পড়া
     async function fetchPlaylist() {
         try {
             const response = await fetch('playlist.txt');
@@ -223,13 +275,13 @@
             lines.forEach(line => {
                 const trimmedLine = line.trim();
                 if (trimmedLine !== "") {
-                    // যদি ফাইলে অলরেডি কমা দিয়ে নাম এবং লিঙ্ক থাকে
                     if (trimmedLine.includes(',')) {
                         const parts = trimmedLine.split(',');
                         txtLinks.push({ defaultName: parts[0].trim(), url: parts[1].trim() });
                     } else if (trimmedLine.startsWith('http')) {
-                        // যদি শুধু লিঙ্ক থাকে
-                        txtLinks.push({ defaultName: `Channel ${count}`, url: trimmedLine });
+                        // যদি শুধু লিঙ্ক থাকে, তবে অটোমেটিক নাম ডিটেক্ট করবে
+                        const autoDetectedName = extractChannelName(trimmedLine, count);
+                        txtLinks.push({ defaultName: autoDetectedName, url: trimmedLine });
                         count++;
                     }
                 }
@@ -241,7 +293,7 @@
         }
     }
 
-    // ৩. ডেটাবেস এবং টেক্সট ফাইল কম্বাইন করা
+    // ৪. ডেটাবেস এবং টেক্সট ফাইল কম্বাইন করা
     function loadUserSettingsAndRender() {
         const transaction = db.transaction([storeName], "readonly");
         const store = transaction.objectStore(storeName);
@@ -270,7 +322,7 @@
         };
     }
 
-    // ৪. লিস্ট দেখানো
+    // ৫. লিস্ট এবং অটো লোগো দেখানো
     function renderChannels() {
         channelListEl.innerHTML = '';
         let filteredChannels = window.finalChannels || [];
@@ -281,20 +333,37 @@
             return;
         }
 
-        filteredChannels.forEach((channel) => {
+        filteredChannels.forEach((channel, index) => {
             const li = document.createElement('li');
             li.classList.add('channel-item');
             if (channel.url === activeUrl) li.classList.add('active');
 
-            const nameSpan = document.createElement('span');
-            nameSpan.classList.add('channel-name');
-            nameSpan.textContent = channel.name;
-            nameSpan.addEventListener('click', () => {
+            // লোগো + নাম বক্স
+            const infoBox = document.createElement('div');
+            infoBox.classList.add('channel-info-box');
+            infoBox.addEventListener('click', () => {
                 activeUrl = channel.url;
                 playStream(channel.url, channel.name);
                 renderChannels();
             });
 
+            // অটোমেটিক লোগো আইকন তৈরি
+            const logoEl = document.createElement('div');
+            logoEl.classList.add('channel-logo');
+            logoEl.textContent = channel.name.charAt(0); // নামের প্রথম অক্ষর
+            // নামের ওপর ভিত্তি করে নির্দিষ্ট কালার দেওয়া যাতে প্রতিবার একই কালার থাকে
+            const colorIndex = Math.abs(channel.name.charCodeAt(0)) % colors.length;
+            logoEl.style.backgroundColor = colors[colorIndex];
+
+            // নাম টেক্সট
+            const nameSpan = document.createElement('span');
+            nameSpan.classList.add('channel-name');
+            nameSpan.textContent = channel.name;
+
+            infoBox.appendChild(logoEl);
+            infoBox.appendChild(nameSpan);
+
+            // অ্যাকশন বাটন গ্রুপ
             const btnGroup = document.createElement('div');
             btnGroup.classList.add('action-btns');
 
@@ -317,13 +386,14 @@
 
             btnGroup.appendChild(editBtn);
             btnGroup.appendChild(favBtn);
-            li.appendChild(nameSpan);
+            
+            li.appendChild(infoBox);
             li.appendChild(btnGroup);
             channelListEl.appendChild(li);
         });
     }
 
-    // ৫. ট্যাব পরিবর্তন
+    // ৬. ট্যাব পরিবর্তন
     window.switchTab = function(tab) {
         currentTab = tab;
         document.getElementById('allTabBtn').classList.toggle('active', tab === 'all');
@@ -331,7 +401,7 @@
         renderChannels();
     };
 
-    // ৬. নাম পরিবর্তন করা
+    // ৭. নাম পরিবর্তন করা
     function renameChannel(url, currentName) {
         const newName = prompt(`"${currentName}" এর জন্য একটি নতুন নাম দিন:`, currentName);
         if (newName === null) return;
@@ -351,7 +421,7 @@
         };
     }
 
-    // ৭. ফেভারিট সেট করা
+    // ৮. ফেভারিট সেট করা
     function toggleFavorite(url, favStatus, currentName) {
         const transaction = db.transaction([storeName], "readwrite");
         const store = transaction.objectStore(storeName);
@@ -363,30 +433,26 @@
         };
     }
 
-    // ৮. নামসহ প্লেলিস্ট ডাউনলোড করার নতুন ফাংশন (যা গিটহাবে পার্মানেন্ট করতে সাহায্য করবে)
+    // ৯. নতুন নামসহ প্লেলিস্ট ডাউনলোড করা
     window.downloadUpdatedPlaylist = function() {
         if (!window.finalChannels || window.finalChannels.length === 0) {
             alert("প্লেলিস্টে কোনো ডেটা নেই!");
             return;
         }
-
         let fileContent = "";
         window.finalChannels.forEach(channel => {
-            // "নাম, লিঙ্ক" ফরম্যাটে টেক্সট তৈরি হবে
             fileContent += `${channel.name},${channel.url}\n`;
         });
-
         const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
         const tempAnchor = document.createElement("a");
         tempAnchor.href = URL.createObjectURL(blob);
-        tempAnchor.download = "playlist.txt"; // নাম অপরিবর্তিত থাকবে
-        
+        tempAnchor.download = "playlist.txt";
         document.body.appendChild(tempAnchor);
         tempAnchor.click();
         document.body.removeChild(tempAnchor);
     };
 
-    // ৯. ভিডিও প্লে
+    // ১০. ভিডিও প্লে
     function playStream(url, name) {
         playingChannelEl.textContent = name;
         if (hls) hls.destroy();
