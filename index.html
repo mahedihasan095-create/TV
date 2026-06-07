@@ -16,15 +16,16 @@
             background-color: #141414;
             color: #fff;
             display: flex;
+            flex-direction: row-reverse; /* ডেক্সটপে চ্যানেল লিস্ট ডান পাশে এবং প্লেয়ার বাম পাশে নেওয়ার ম্যাজিক */
             height: 100vh;
             overflow: hidden;
         }
         
-        /* ডেক্সটপ লেআউট */
+        /* ডেক্সটপ লেআউট (ডান পাশের চ্যানেল লিস্ট সাইডবার) */
         .sidebar {
             width: 340px;
             background-color: #1f1f1f;
-            border-right: 2px solid #2d2d2d;
+            border-left: 2px solid #2d2d2d; /* বর্ডার বাম পাশে দেওয়া হয়েছে */
             display: flex;
             flex-direction: column;
             z-index: 10;
@@ -39,26 +40,11 @@
         }
         .header-sticky.hide {
             transform: translateY(-100%);
-            margin-top: -110px;
+            margin-top: -60px; /* বাটন চলে যাওয়ায় উচ্চতা কমানো হয়েছে */
         }
 
-        .backup-box {
-            padding: 12px;
-            text-align: center;
-        }
-        .backup-btn {
-            width: 100%;
-            padding: 10px;
-            background-color: #4caf50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-weight: bold;
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
         .search-box {
-            padding: 0 12px 12px 12px;
+            padding: 12px; /* সার্চ বক্সের প্যাডিং সুন্দর করা হয়েছে */
         }
         .search-input {
             width: 100%;
@@ -134,11 +120,11 @@
             text-overflow: ellipsis;
         }
         
-        /* 🖼️ লোগো স্টাইল */
+        /* লোগো স্টাইল */
         .channel-logo {
             width: 38px;
             height: 38px;
-            border-radius: 6px; /* একটু চারকোনা শেপ লোগোর জন্য মানানসই */
+            border-radius: 6px;
             color: #000;
             display: flex;
             align-items: center;
@@ -181,7 +167,7 @@
             opacity: 0.6;
         }
 
-        /* ডান পাশের মেইন প্লেয়ার এরিয়া */
+        /* বাম পাশের মেইন প্লেয়ার এরিয়া */
         .main-content {
             flex-grow: 1;
             display: flex;
@@ -218,7 +204,7 @@
         /* 📱 বিশেষ মোবাইল ভিউ সিএসএস */
         @media (max-width: 768px) {
             body {
-                flex-direction: column;
+                flex-direction: column; /* মোবাইলে আগের মতো স্বাভাবিক উপর-নিচ লেআউট থাকবে */
             }
             
             .main-content {
@@ -243,7 +229,7 @@
                 width: 100%;
                 height: calc(100vh - 56.25vw);
                 margin-top: 56.25vw;
-                border-right: none;
+                border-left: none;
             }
         }
     </style>
@@ -259,9 +245,6 @@
 
     <div class="sidebar">
         <div class="header-sticky" id="headerSticky">
-            <div class="backup-box">
-                <button class="backup-btn" onclick="downloadUpdatedPlaylist()">নতুন playlist.m3u ডাউনলোড করুন</button>
-            </div>
             <div class="search-box">
                 <input type="text" id="searchInput" class="search-input" placeholder="চ্যানেল খুঁজুন (Search)..." oninput="onSearchInput()">
             </div>
@@ -297,11 +280,11 @@
 
     const colors = ['#00bcd4', '#ff4081', '#4caf50', '#ff9800', '#9c27b0', '#e91e63', '#009688', '#3f51b5'];
 
-    // স্ক্রল ট্র্যাকিং (মোবাইলে ডাউনলোড ও সার্চ বক্স অটো-হাইড করার কোড)
+    // স্ক্রল ট্র্যাকিং (মোবাইলে সার্চ বক্স অটো-হাইড করার কোড)
     let lastScrollTop = 0;
     listContainer.addEventListener('scroll', () => {
         let scrollTop = listContainer.scrollTop;
-        if (scrollTop > lastScrollTop && scrollTop > 50) {
+        if (scrollTop > lastScrollTop && scrollTop > 30) {
             headerSticky.classList.add('hide');
         } else {
             headerSticky.classList.remove('hide');
@@ -322,7 +305,7 @@
         fetchPlaylist(); 
     };
 
-    // ২. লিংক থেকে নাম বের করার ব্যাকআপ ফাংশন (যদি কোনোটির এক্সট-ইনফো না থাকে)
+    // ২. লিংক থেকে নাম বের করার ব্যাকআপ ফাংশন
     function extractChannelName(url, fallbackCount) {
         try {
             const urlObj = new URL(url);
@@ -358,15 +341,12 @@
                 if (line === "") continue;
 
                 if (line.startsWith('#EXTINF:')) {
-                    // লোগো এক্সট্রাক্ট করা (tvg-logo="...")
                     const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
                     currentLogo = logoMatch ? logoMatch[1] : "";
 
-                    // গ্রুপ বা ক্যাটাগরি এক্সট্রাক্ট করা (group-title="...")
                     const groupMatch = line.match(/group-title="([^"]+)"/i);
                     currentGroup = groupMatch ? groupMatch[1] : "Others";
 
-                    // কমা এর পরের আসল চ্যানেলের নাম বের করা
                     const commaIndex = line.lastIndexOf(',');
                     if (commaIndex !== -1) {
                         currentExtName = line.substring(commaIndex + 1).trim();
@@ -456,13 +436,11 @@
                 if(window.innerWidth <= 768) window.scrollTo({top: 0, behavior: 'smooth'});
             });
 
-            // 🖼️ ইমেজ লোগো লোড করার স্মার্ট লজিক
             let logoEl;
             if (channel.logo && channel.logo.trim() !== "") {
                 logoEl = document.createElement('img');
                 logoEl.src = channel.logo;
                 logoEl.classList.add('channel-logo');
-                // যদি ইমেজ লোড ফেল করে (Fallback)
                 logoEl.onerror = function() {
                     replaceWithTextLogo(this, channel.name);
                 };
@@ -508,7 +486,6 @@
         });
     }
 
-    // লোগো ইমেজ না থাকলে টেক্সট লোগো বসানোর হেল্পার ফাংশন
     function replaceWithTextLogo(element, name) {
         const textDiv = document.createElement('div');
         textDiv.classList.add('channel-logo');
@@ -559,25 +536,6 @@
             store.put(data).onsuccess = function() { loadUserSettingsAndRender(); };
         };
     }
-
-    // আপনার দেওয়া অরিজিনাল tvg-logo এবং group-title ঠিক রেখে ডাউনলোড করার ফাংশন
-    window.downloadUpdatedPlaylist = function() {
-        if (!window.finalChannels || window.finalChannels.length === 0) {
-            alert("প্লেলিস্টে কোনো ডেটা নেই!");
-            return;
-        }
-        let fileContent = "#EXTM3U\n#PLAYLIST:Live TV Pro\n";
-        window.finalChannels.forEach(channel => {
-            fileContent += `#EXTINF:-1 tvg-name="${channel.name}" tvg-logo="${channel.logo || ''}" group-title="${channel.group || 'Others'}",${channel.name}\n${channel.url}\n`;
-        });
-        const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
-        const tempAnchor = document.createElement("a");
-        tempAnchor.href = URL.createObjectURL(blob);
-        tempAnchor.download = "playlist.m3u";
-        document.body.appendChild(tempAnchor);
-        tempAnchor.click();
-        document.body.removeChild(tempAnchor);
-    };
 
     function playStream(url, name) {
         playingChannelEl.textContent = name;
