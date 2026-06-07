@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>স্মার্ট অটো-ডিটেক্ট লাইভ টিভি প্লেয়ার</title>
+    <title>অটো-ডিটেক্ট ও সার্চ সুবিধাসহ লাইভ টিভি প্লেয়ার</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         * {
@@ -31,7 +31,6 @@
         .backup-box {
             padding: 12px;
             background-color: #0f0f0f;
-            border-bottom: 2px solid #2d2d2d;
             text-align: center;
         }
         .backup-btn {
@@ -48,6 +47,26 @@
         }
         .backup-btn:hover {
             background-color: #388e3c;
+        }
+        /* সার্চ বক্স এরিয়া */
+        .search-box {
+            padding: 0 12px 12px 12px;
+            background-color: #0f0f0f;
+            border-bottom: 2px solid #2d2d2d;
+        }
+        .search-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background-color: #222;
+            color: #fff;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-input:focus {
+            border-color: #00bcd4;
         }
         /* ট্যাব সিস্টেম */
         .tab-box {
@@ -96,7 +115,6 @@
             border-left: 4px solid #00bcd4;
         }
         
-        /* লোগো এবং নাম একসাথে রাখার জন্য */
         .channel-info-box {
             display: flex;
             align-items: center;
@@ -107,7 +125,6 @@
             text-overflow: ellipsis;
             padding-right: 10px;
         }
-        /* অটো জেনারেটেড স্মার্ট লোগো */
         .channel-logo {
             width: 35px;
             height: 35px;
@@ -197,6 +214,9 @@
         <div class="backup-box">
             <button class="backup-btn" onclick="downloadUpdatedPlaylist()">নতুন playlist.txt ডাউনলোড করুন</button>
         </div>
+        <div class="search-box">
+            <input type="text" id="searchInput" class="search-input" placeholder="চ্যানেল খুঁজুন (Search)..." oninput="onSearchInput()">
+        </div>
         <div class="tab-box">
             <button class="tab-btn active" id="allTabBtn" onclick="switchTab('all')">সব চ্যানেল</button>
             <button class="tab-btn" id="favTabBtn" onclick="switchTab('fav')">★ ফেভারিট</button>
@@ -208,24 +228,25 @@
         <div class="player-container">
             <video id="videoPlayer" controls autoplay playsinline></video>
         </div>
-        <div class="current-title">এখন দেখছেন: <span id="playingChannel">로드 중...</span></div>
+        <div class="current-title">এখন দেখছেন: <span id="playingChannel">লোড হচ্ছে...</span></div>
     </div>
 
 <script>
     const video = document.getElementById('videoPlayer');
     const channelListEl = document.getElementById('channelList');
     const playingChannelEl = document.getElementById('playingChannel');
+    const searchInput = document.getElementById('searchInput');
     
     let db;
-    const dbName = "SmartTVDB";
+    const dbName = "SmartTVDB_V2";
     const storeName = "user_settings";
 
     let txtLinks = []; 
     let currentTab = 'all'; 
+    let searchQuery = ''; // সার্চ কি-ওয়ার্ড ট্র্যাক করার জন্য
     let hls = null;
     let activeUrl = "";
 
-    // লোগোর ব্যাকগ্রাউন্ড কালার সুন্দর করার জন্য কিছু র্যান্ডম কালার প্যালেট
     const colors = ['#00bcd4', '#ff4081', '#4caf50', '#ff9800', '#9c27b0', '#e91e63', '#009688', '#3f51b5'];
 
     // ১. ডাটাবেস সেটআপ
@@ -241,19 +262,17 @@
         fetchPlaylist(); 
     };
 
-    // ২. ইউআরএল থেকে অটোমেটিক নাম বের করার ম্যাজিক ফাংশন
+    // ২. ইউআরএল থেকে অটোমেটিক নাম বের করার ফাংশন
     function extractChannelName(url, fallbackCount) {
         try {
             const urlObj = new URL(url);
             const pathParts = urlObj.pathname.split('/').filter(p => p !== "");
             
             if (pathParts.length > 0) {
-                // সাধারণত index.m3u8 এর ঠিক আগের অংশটিই চ্যানেলের নাম হয়
                 let detectedName = pathParts[pathParts.length - 1];
                 if (detectedName.toLowerCase().includes('index') || detectedName.toLowerCase().includes('playlist')) {
                     detectedName = pathParts[pathParts.length - 2] || detectedName;
                 }
-                // নামের ভেতরের ড্যাশ বা ডট পরিষ্কার করা এবং প্রথম অক্ষর বড় হাতের করা
                 detectedName = detectedName.replace(/[-_.]/g, ' ');
                 return detectedName.charAt(0).toUpperCase() + detectedName.slice(1);
             }
@@ -279,7 +298,6 @@
                         const parts = trimmedLine.split(',');
                         txtLinks.push({ defaultName: parts[0].trim(), url: parts[1].trim() });
                     } else if (trimmedLine.startsWith('http')) {
-                        // যদি শুধু লিঙ্ক থাকে, তবে অটোমেটিক নাম ডিটেক্ট করবে
                         const autoDetectedName = extractChannelName(trimmedLine, count);
                         txtLinks.push({ defaultName: autoDetectedName, url: trimmedLine });
                         count++;
@@ -322,23 +340,33 @@
         };
     }
 
-    // ৫. লিস্ট এবং অটো লোগো দেখানো
+    // ৫. লিস্ট দেখানো (সার্চ ফিল্টার যুক্ত করা হয়েছে)
     function renderChannels() {
         channelListEl.innerHTML = '';
         let filteredChannels = window.finalChannels || [];
-        if (currentTab === 'fav') filteredChannels = filteredChannels.filter(c => c.isFavorite);
+        
+        // ট্যাব অনুযায়ী ফিল্টার
+        if (currentTab === 'fav') {
+            filteredChannels = filteredChannels.filter(c => c.isFavorite);
+        }
+
+        // সার্চ ইনপুট অনুযায়ী ফিল্টার
+        if (searchQuery !== '') {
+            filteredChannels = filteredChannels.filter(c => 
+                c.name.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+        }
 
         if (filteredChannels.length === 0) {
-            channelListEl.innerHTML = `<li style="padding:20px; color:#aaa; text-align:center;">কোনো চ্যানেল নেই</li>`;
+            channelListEl.innerHTML = `<li style="padding:20px; color:#aaa; text-align:center;">কোনো চ্যানেল পাওয়া যায়নি</li>`;
             return;
         }
 
-        filteredChannels.forEach((channel, index) => {
+        filteredChannels.forEach((channel) => {
             const li = document.createElement('li');
             li.classList.add('channel-item');
             if (channel.url === activeUrl) li.classList.add('active');
 
-            // লোগো + নাম বক্স
             const infoBox = document.createElement('div');
             infoBox.classList.add('channel-info-box');
             infoBox.addEventListener('click', () => {
@@ -347,15 +375,12 @@
                 renderChannels();
             });
 
-            // অটোমেটিক লোগো আইকন তৈরি
             const logoEl = document.createElement('div');
             logoEl.classList.add('channel-logo');
-            logoEl.textContent = channel.name.charAt(0); // নামের প্রথম অক্ষর
-            // নামের ওপর ভিত্তি করে নির্দিষ্ট কালার দেওয়া যাতে প্রতিবার একই কালার থাকে
+            logoEl.textContent = channel.name.charAt(0);
             const colorIndex = Math.abs(channel.name.charCodeAt(0)) % colors.length;
             logoEl.style.backgroundColor = colors[colorIndex];
 
-            // নাম টেক্সট
             const nameSpan = document.createElement('span');
             nameSpan.classList.add('channel-name');
             nameSpan.textContent = channel.name;
@@ -363,7 +388,6 @@
             infoBox.appendChild(logoEl);
             infoBox.appendChild(nameSpan);
 
-            // অ্যাকশন বাটন গ্রুপ
             const btnGroup = document.createElement('div');
             btnGroup.classList.add('action-btns');
 
@@ -393,7 +417,13 @@
         });
     }
 
-    // ৬. ট্যাব পরিবর্তন
+    // ৬. সার্চ বক্সে কিছু টাইপ করলে যা হবে
+    window.onSearchInput = function() {
+        searchQuery = searchInput.value.trim();
+        renderChannels();
+    };
+
+    // ৭. ট্যাব পরিবর্তন
     window.switchTab = function(tab) {
         currentTab = tab;
         document.getElementById('allTabBtn').classList.toggle('active', tab === 'all');
@@ -401,7 +431,7 @@
         renderChannels();
     };
 
-    // ৭. নাম পরিবর্তন করা
+    // ৮. নাম পরিবর্তন করা
     function renameChannel(url, currentName) {
         const newName = prompt(`"${currentName}" এর জন্য একটি নতুন নাম দিন:`, currentName);
         if (newName === null) return;
@@ -421,7 +451,7 @@
         };
     }
 
-    // ৮. ফেভারিট সেট করা
+    // ৯. ফেভারিট সেট করা
     function toggleFavorite(url, favStatus, currentName) {
         const transaction = db.transaction([storeName], "readwrite");
         const store = transaction.objectStore(storeName);
@@ -433,7 +463,7 @@
         };
     }
 
-    // ৯. নতুন নামসহ প্লেলিস্ট ডাউনলোড করা
+    // ১০. নতুন নামসহ প্লেলিস্ট ডাউনলোড করা
     window.downloadUpdatedPlaylist = function() {
         if (!window.finalChannels || window.finalChannels.length === 0) {
             alert("প্লেলিস্টে কোনো ডেটা নেই!");
@@ -452,7 +482,7 @@
         document.body.removeChild(tempAnchor);
     };
 
-    // ১০. ভিডিও প্লে
+    // ১১. ভিডিও প্লে
     function playStream(url, name) {
         playingChannelEl.textContent = name;
         if (hls) hls.destroy();
