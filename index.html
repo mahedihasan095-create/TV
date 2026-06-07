@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>অটো লিঙ্ক ডিটেক্টর লাইভ টিভি প্লেয়ার</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #141414;
+            color: #fff;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        /* বাম পাশের সাইডবার */
+        .sidebar {
+            width: 300px;
+            background-color: #1f1f1f;
+            border-right: 2px solid #2d2d2d;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-header {
+            padding: 20px;
+            background-color: #0f0f0f;
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #00bcd4;
+            border-bottom: 2px solid #2d2d2d;
+        }
+        /* চ্যানেল লিস্ট */
+        .channel-list {
+            list-style: none;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        .channel-item {
+            padding: 15px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #2d2d2d;
+            transition: background 0.3s, color 0.3s;
+            font-size: 1rem;
+        }
+        .channel-item:hover {
+            background-color: #2a2a2a;
+            color: #00bcd4;
+        }
+        .channel-item.active {
+            background-color: #00bcd4;
+            color: #000;
+            font-weight: bold;
+        }
+        /* ডান পাশের প্লেয়ার এরিয়া */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background-color: #111;
+        }
+        .player-container {
+            width: 100%;
+            max-width: 900px;
+            aspect-ratio: 16/9;
+            background-color: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .current-title {
+            margin-top: 15px;
+            font-size: 1.2rem;
+            color: #aaa;
+        }
+        .current-title span {
+            color: #00bcd4;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-header">চ্যানেল সমূহ (অটো লোড)</div>
+        <ul class="channel-list" id="channelList">
+            </ul>
+    </div>
+
+    <div class="main-content">
+        <div class="player-container">
+            <video id="videoPlayer" controls autoplay playsinline></video>
+        </div>
+        <div class="current-title">এখন দেখছেন: <span id="playingChannel">লোড হচ্ছে...</span></div>
+    </div>
+
+<script>
+    const video = document.getElementById('videoPlayer');
+    const channelListEl = document.getElementById('channelList');
+    const playingChannelEl = document.getElementById('playingChannel');
+    let hls = null;
+    let channels = [];
+
+    // টেক্সট ফাইল থেকে শুধুমাত্র লিঙ্কগুলো রিড করার ফাংশন
+    async function fetchPlaylist() {
+        try {
+            // একই ফোল্ডারে থাকা playlist.txt ফাইলটি রিড করা হচ্ছে
+            const response = await fetch('playlist.txt');
+            if (!response.ok) {
+                throw new Error("playlist.txt ফাইলটি পাওয়া যায়নি!");
+            }
+            
+            const textData = await response.text();
+            parseTextData(textData);
+        } catch (error) {
+            playingChannelEl.textContent = "এরর: " + error.message;
+            alert("অনুগ্রহ করে নিশ্চিত করুন যে index.html এবং playlist.txt একই ফোল্ডারে আছে এবং আপনি এটি কোনো লোকাল সার্ভার (যেমন VS Code Live Server) দিয়ে ওপেন করেছেন।");
+        }
+    }
+
+    // প্রতি লাইনের লিঙ্কের জন্য অটোমেটিক নাম জেনারেট করার ফাংশন
+    function parseTextData(text) {
+        // লাইন বাই লাইন ভাগ করা
+        const lines = text.split('\n');
+        let count = 1;
+        
+        lines.forEach(line => {
+            const url = line.trim();
+            // লাইনটি যদি ফাঁকা না হয় এবং http দিয়ে শুরু হয়
+            if (url !== "" && url.startsWith('http')) {
+                // অটোমেটিক নাম তৈরি করা হচ্ছে (যেমন: Channel 1, Channel 2...)
+                const autoName = `Channel ${count}`;
+                channels.push({ name: autoName, url: url });
+                count++;
+            }
+        });
+
+        if(channels.length > 0) {
+            renderChannels();
+            // প্রথম চ্যানেলটি অটো প্লে করা
+            playStream(channels[0].url, channels[0].name);
+            setTimeout(() => {
+                const firstItem = document.querySelector('.channel-item');
+                if(firstItem) firstItem.classList.add('active');
+            }, 50);
+        } else {
+            playingChannelEl.textContent = "প্লেলিস্টে কোনো বৈধ লিঙ্ক পাওয়া যায়নি!";
+        }
+    }
+
+    // স্ক্রিনে চ্যানেলের তালিকা দেখানোর ফাংশন
+    function renderChannels() {
+        channelListEl.innerHTML = ''; 
+        channels.forEach((channel, index) => {
+            const li = document.createElement('li');
+            li.classList.add('channel-item');
+            li.textContent = channel.name; // এখানে অটোমেটিক তৈরি হওয়া নাম দেখাবে
+            
+            li.addEventListener('click', () => {
+                document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+                li.classList.add('active');
+                playStream(channel.url, channel.name);
+            });
+            
+            channelListEl.appendChild(li);
+        });
+    }
+
+    // ভিডিও প্লে করার ফাংশন
+    function playStream(url, name) {
+        playingChannelEl.textContent = name;
+        if (hls) { hls.destroy(); }
+
+        if (Hls.isSupported()) {
+            hls = new Hls();
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play().catch(e => console.log("Autoplay blocked:", e));
+            });
+        } 
+        else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = url;
+            video.addEventListener('loadedmetadata', () => {
+                video.play().catch(e => console.log("Autoplay blocked:", e));
+            });
+        } else {
+            alert("আপনার ব্রাউজারে এই ভিডিওটি সাপোর্ট করছে না।");
+        }
+    }
+
+    // পেজ লোড হলে প্লেলিস্ট রিড করা শুরু করবে
+    document.addEventListener("DOMContentLoaded", fetchPlaylist);
+</script>
+
+</body>
+</html>
