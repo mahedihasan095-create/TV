@@ -133,10 +133,12 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        
+        /* 🖼️ লোগো স্টাইল */
         .channel-logo {
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
+            width: 38px;
+            height: 38px;
+            border-radius: 6px; /* একটু চারকোনা শেপ লোগোর জন্য মানানসই */
             color: #000;
             display: flex;
             align-items: center;
@@ -145,6 +147,9 @@
             font-size: 1.1rem;
             text-transform: uppercase;
             flex-shrink: 0;
+            object-fit: contain;
+            background-color: #2a2a2a;
+            border: 1px solid #444;
         }
         .channel-name {
             white-space: nowrap;
@@ -255,7 +260,7 @@
     <div class="sidebar">
         <div class="header-sticky" id="headerSticky">
             <div class="backup-box">
-                <button class="backup-btn" onclick="downloadUpdatedPlaylist()">নতুন playlist.txt ডাউনলোড করুন</button>
+                <button class="backup-btn" onclick="downloadUpdatedPlaylist()">নতুন playlist.m3u ডাউনলোড করুন</button>
             </div>
             <div class="search-box">
                 <input type="text" id="searchInput" class="search-input" placeholder="চ্যানেল খুঁজুন (Search)..." oninput="onSearchInput()">
@@ -281,10 +286,10 @@
     const headerSticky = document.getElementById('headerSticky');
     
     let db;
-    const dbName = "MehdiLiveTVDB";
+    const dbName = "MehdiM3UAdvancedDB";
     const storeName = "user_settings";
 
-    let txtLinks = []; 
+    let m3uLinks = []; 
     let currentTab = 'all'; 
     let searchQuery = ''; 
     let hls = null;
@@ -317,7 +322,7 @@
         fetchPlaylist(); 
     };
 
-    // ২. লিংক থেকে নাম বের করার ফাংশন
+    // ২. লিংক থেকে নাম বের করার ব্যাকআপ ফাংশন (যদি কোনোটির এক্সট-ইনফো না থাকে)
     function extractChannelName(url, fallbackCount) {
         try {
             const urlObj = new URL(url);
@@ -335,36 +340,63 @@
         return `Channel ${fallbackCount}`;
     }
 
-    // ৩. playlist.txt ফাইল পড়া
+    // ৩. playlist.m3u ফাইল পড়া এবং লোগো-নাম আলাদা করা
     async function fetchPlaylist() {
         try {
-            const response = await fetch('playlist.txt');
-            if (!response.ok) throw new Error("playlist.txt ফাইলটি পাওয়া যায়নি!");
+            const response = await fetch('playlist.m3u');
+            if (!response.ok) throw new Error("playlist.m3u ফাইলটি পাওয়া যায়নি!");
             const textData = await response.text();
             
             const lines = textData.split('\n');
             let count = 1;
-            lines.forEach(line => {
-                const trimmedLine = line.trim();
-                if (trimmedLine !== "") {
-                    if (trimmedLine.includes(',')) {
-                        const parts = trimmedLine.split(',');
-                        txtLinks.push({ defaultName: parts[0].trim(), url: parts[1].trim() });
-                    } else if (trimmedLine.startsWith('http')) {
-                        const autoDetectedName = extractChannelName(trimmedLine, count);
-                        txtLinks.push({ defaultName: autoDetectedName, url: trimmedLine });
-                        count++;
+            let currentExtName = "";
+            let currentLogo = "";
+            let currentGroup = "";
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line === "") continue;
+
+                if (line.startsWith('#EXTINF:')) {
+                    // লোগো এক্সট্রাক্ট করা (tvg-logo="...")
+                    const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
+                    currentLogo = logoMatch ? logoMatch[1] : "";
+
+                    // গ্রুপ বা ক্যাটাগরি এক্সট্রাক্ট করা (group-title="...")
+                    const groupMatch = line.match(/group-title="([^"]+)"/i);
+                    currentGroup = groupMatch ? groupMatch[1] : "Others";
+
+                    // কমা এর পরের আসল চ্যানেলের নাম বের করা
+                    const commaIndex = line.lastIndexOf(',');
+                    if (commaIndex !== -1) {
+                        currentExtName = line.substring(commaIndex + 1).trim();
                     }
+                } 
+                else if (line.startsWith('http')) {
+                    let finalName = currentExtName !== "" ? currentExtName : extractChannelName(line, count);
+
+                    m3uLinks.push({ 
+                        defaultName: finalName, 
+                        url: line,
+                        logo: currentLogo,
+                        group: currentGroup
+                    });
+                    
+                    count++;
+                    currentExtName = ""; 
+                    currentLogo = "";
+                    currentGroup = "";
                 }
-            });
+            }
 
             loadUserSettingsAndRender();
         } catch (error) {
             console.error(error);
+            playingChannelEl.textContent = "Error: " + error.message;
         }
     }
 
-    // ৪. কম্বাইন ডেটা
+    // ৪. ইউজার ডেটা কম্বাইন করা
     function loadUserSettingsAndRender() {
         const transaction = db.transaction([storeName], "readonly");
         const store = transaction.objectStore(storeName);
@@ -374,12 +406,14 @@
             const savedData = getAllRequest.result;
             const savedMap = new Map(savedData.map(item => [item.url, item]));
 
-            window.finalChannels = txtLinks.map(item => {
+            window.finalChannels = m3uLinks.map(item => {
                 const userSetup = savedMap.get(item.url);
                 return {
                     url: item.url,
                     name: userSetup && userSetup.customName ? userSetup.customName : item.defaultName,
-                    isFavorite: userSetup ? userSetup.isFavorite : false
+                    isFavorite: userSetup ? userSetup.isFavorite : false,
+                    logo: item.logo,
+                    group: item.group
                 };
             });
 
@@ -393,7 +427,7 @@
         };
     }
 
-    // ৫. লিস্ট রেন্ডার
+    // ৫. লিস্ট এবং ইমেজ লোগো রেন্ডার করা
     function renderChannels() {
         channelListEl.innerHTML = '';
         let filteredChannels = window.finalChannels || [];
@@ -422,11 +456,21 @@
                 if(window.innerWidth <= 768) window.scrollTo({top: 0, behavior: 'smooth'});
             });
 
-            const logoEl = document.createElement('div');
-            logoEl.classList.add('channel-logo');
-            logoEl.textContent = channel.name.charAt(0);
-            const colorIndex = Math.abs(channel.name.charCodeAt(0)) % colors.length;
-            logoEl.style.backgroundColor = colors[colorIndex];
+            // 🖼️ ইমেজ লোগো লোড করার স্মার্ট লজিক
+            let logoEl;
+            if (channel.logo && channel.logo.trim() !== "") {
+                logoEl = document.createElement('img');
+                logoEl.src = channel.logo;
+                logoEl.classList.add('channel-logo');
+                // যদি ইমেজ লোড ফেল করে (Fallback)
+                logoEl.onerror = function() {
+                    replaceWithTextLogo(this, channel.name);
+                };
+            } else {
+                logoEl = document.createElement('div');
+                logoEl.classList.add('channel-logo');
+                replaceWithTextLogo(logoEl, channel.name);
+            }
 
             const nameSpan = document.createElement('span');
             nameSpan.classList.add('channel-name');
@@ -462,6 +506,17 @@
             li.appendChild(btnGroup);
             channelListEl.appendChild(li);
         });
+    }
+
+    // লোগো ইমেজ না থাকলে টেক্সট লোগো বসানোর হেল্পার ফাংশন
+    function replaceWithTextLogo(element, name) {
+        const textDiv = document.createElement('div');
+        textDiv.classList.add('channel-logo');
+        textDiv.textContent = name.charAt(0);
+        const colorIndex = Math.abs(name.charCodeAt(0)) % colors.length;
+        textDiv.style.backgroundColor = colors[colorIndex];
+        textDiv.style.color = "#000";
+        element.replaceWith(textDiv);
     }
 
     window.onSearchInput = function() {
@@ -505,19 +560,20 @@
         };
     }
 
+    // আপনার দেওয়া অরিজিনাল tvg-logo এবং group-title ঠিক রেখে ডাউনলোড করার ফাংশন
     window.downloadUpdatedPlaylist = function() {
         if (!window.finalChannels || window.finalChannels.length === 0) {
             alert("প্লেলিস্টে কোনো ডেটা নেই!");
             return;
         }
-        let fileContent = "";
+        let fileContent = "#EXTM3U\n#PLAYLIST:Live TV Pro\n";
         window.finalChannels.forEach(channel => {
-            fileContent += `${channel.name},${channel.url}\n`;
+            fileContent += `#EXTINF:-1 tvg-name="${channel.name}" tvg-logo="${channel.logo || ''}" group-title="${channel.group || 'Others'}",${channel.name}\n${channel.url}\n`;
         });
         const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
         const tempAnchor = document.createElement("a");
         tempAnchor.href = URL.createObjectURL(blob);
-        tempAnchor.download = "playlist.txt";
+        tempAnchor.download = "playlist.m3u";
         document.body.appendChild(tempAnchor);
         tempAnchor.click();
         document.body.removeChild(tempAnchor);
