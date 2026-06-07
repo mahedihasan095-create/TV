@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ফিক্সড - অটো লাইভ টিভি প্লেয়ার</title>
+    <title>মেহেদী লাইভ টিভি প্লেয়ার</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         * {
@@ -19,58 +19,93 @@
             height: 100vh;
             overflow: hidden;
         }
-        /* বাম পাশের সাইডবার */
+        
+        /* ডেক্সটপ লেআউট */
         .sidebar {
-            width: 320px;
+            width: 340px;
             background-color: #1f1f1f;
             border-right: 2px solid #2d2d2d;
             display: flex;
             flex-direction: column;
+            z-index: 10;
         }
-        /* লিঙ্ক ইনপুট বক্স এরিয়া */
-        .input-box {
-            padding: 15px;
+        
+        /* হেডার বক্স যা স্ক্রল করলে হাইড হবে */
+        .header-sticky {
             background-color: #0f0f0f;
-            border-bottom: 2px solid #2d2d2d;
+            transition: transform 0.3s ease, margin-top 0.3s ease;
+            position: relative;
+            z-index: 5;
         }
-        .input-box h3 {
-            font-size: 1rem;
-            margin-bottom: 10px;
-            color: #00bcd4;
+        .header-sticky.hide {
+            transform: translateY(-100%);
+            margin-top: -110px;
         }
-        .input-box input {
+
+        .backup-box {
+            padding: 12px;
+            text-align: center;
+        }
+        .backup-btn {
             width: 100%;
-            padding: 8px;
-            margin-bottom: 8px;
+            padding: 10px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .search-box {
+            padding: 0 12px 12px 12px;
+        }
+        .search-input {
+            width: 100%;
+            padding: 10px 12px;
             border: 1px solid #444;
             border-radius: 4px;
             background-color: #222;
             color: #fff;
             font-size: 0.9rem;
-        }
-        .input-box input:focus {
             outline: none;
+        }
+        .search-input:focus {
             border-color: #00bcd4;
         }
-        .input-box button {
-            width: 100%;
-            padding: 8px;
-            background-color: #00bcd4;
+
+        /* ট্যাব সিস্টেম */
+        .tab-box {
+            display: flex;
+            background-color: #0f0f0f;
+            border-bottom: 2px solid #2d2d2d;
+            position: sticky;
+            top: 0;
+            z-index: 6;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            background: none;
             border: none;
-            border-radius: 4px;
-            color: #000;
+            color: #aaa;
             font-weight: bold;
             cursor: pointer;
-            transition: background 0.2s;
+            font-size: 0.9rem;
         }
-        .input-box button:hover {
-            background-color: #008ba3;
+        .tab-btn.active {
+            color: #00bcd4;
+            border-bottom: 3px solid #00bcd4;
+            background-color: #141414;
         }
+
         /* চ্যানেল লিস্ট */
-        .channel-list {
-            list-style: none;
+        .channel-list-container {
             overflow-y: auto;
             flex-grow: 1;
+        }
+        .channel-list {
+            list-style: none;
         }
         .channel-item {
             padding: 12px 15px;
@@ -85,23 +120,63 @@
             background-color: #2a2a2a;
         }
         .channel-item.active {
-            background-color: #00bcd4;
-            color: #000;
-            font-weight: bold;
+            background-color: #22444d;
+            border-left: 4px solid #00bcd4;
         }
-        .delete-btn {
+        
+        .channel-info-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .channel-logo {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+        .channel-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .action-btns {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .fav-btn {
             background: none;
             border: none;
-            color: #ff5252;
+            color: #666;
             cursor: pointer;
-            font-weight: bold;
-            font-size: 0.8rem;
-            padding: 2px 5px;
+            font-size: 1.2rem;
         }
-        .delete-btn:hover {
-            text-decoration: underline;
+        .fav-btn.is-fav {
+            color: #ffca28;
         }
-        /* ডান পাশের প্লেয়ার এরিয়া */
+        .edit-btn {
+            background: none;
+            border: none;
+            color: #00bcd4;
+            cursor: pointer;
+            font-size: 0.9rem;
+            opacity: 0.6;
+        }
+
+        /* ডান পাশের মেইন প্লেয়ার এরিয়া */
         .main-content {
             flex-grow: 1;
             display: flex;
@@ -134,155 +209,323 @@
             color: #00bcd4;
             font-weight: bold;
         }
+
+        /* 📱 বিশেষ মোবাইল ভিউ সিএসএস */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+            
+            .main-content {
+                width: 100%;
+                height: auto;
+                padding: 0;
+                position: fixed;
+                top: 0;
+                left: 0;
+                z-index: 100;
+                background-color: #000;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            }
+            .player-container {
+                border-radius: 0;
+            }
+            .current-title {
+                display: none;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: calc(100vh - 56.25vw);
+                margin-top: 56.25vw;
+                border-right: none;
+            }
+        }
     </style>
 </head>
 <body>
-
-    <div class="sidebar">
-        <div class="input-box">
-            <h3>নতুন চ্যানেল যোগ করুন</h3>
-            <input type="text" id="channelName" placeholder="চ্যানেলের নাম (যেমন: Somoy TV)">
-            <input type="text" id="channelUrl" placeholder="M3U8 লিংকের ইউআরএল (URL)">
-            <button id="addBtn">চ্যানেল যুক্ত করুন</button>
-        </div>
-        <ul class="channel-list" id="channelList">
-            </ul>
-    </div>
 
     <div class="main-content">
         <div class="player-container">
             <video id="videoPlayer" controls autoplay playsinline></video>
         </div>
-        <div class="current-title">এখন দেখছেন: <span id="playingChannel">কোনো চ্যানেল সিলেক্ট করা নেই</span></div>
+        <div class="current-title">এখন দেখছেন: <span id="playingChannel">লোড হচ্ছে...</span></div>
+    </div>
+
+    <div class="sidebar">
+        <div class="header-sticky" id="headerSticky">
+            <div class="backup-box">
+                <button class="backup-btn" onclick="downloadUpdatedPlaylist()">নতুন playlist.txt ডাউনলোড করুন</button>
+            </div>
+            <div class="search-box">
+                <input type="text" id="searchInput" class="search-input" placeholder="চ্যানেল খুঁজুন (Search)..." oninput="onSearchInput()">
+            </div>
+        </div>
+        
+        <div class="tab-box">
+            <button class="tab-btn active" id="allTabBtn" onclick="switchTab('all')">সব চ্যানেল</button>
+            <button class="tab-btn" id="favTabBtn" onclick="switchTab('fav')">★ ফেভারিট</button>
+        </div>
+        
+        <div class="channel-list-container" id="listContainer">
+            <ul class="channel-list" id="channelList"></ul>
+        </div>
     </div>
 
 <script>
-    // সুরক্ষিত উপায়ে লোকাল স্টোরেজ থেকে ডেটা লোড করার ফাংশন
-    function loadChannels() {
-        try {
-            const saved = localStorage.getItem('tv_channels');
-            if (saved) {
-                return JSON.parse(saved);
-            }
-        } catch (e) {
-            console.error("লোকাল স্টোরেজ অ্যাক্সেস করা যাচ্ছে না:", e);
-        }
-        // কোনো ডেটা না থাকলে বা এরর হলে ডিফল্ট স্যাম্পল চ্যানেল
-        return [
-            { name: "নমুনা চ্যানেল (Sample)", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" }
-        ];
-    }
-
-    let channels = loadChannels();
-
     const video = document.getElementById('videoPlayer');
     const channelListEl = document.getElementById('channelList');
     const playingChannelEl = document.getElementById('playingChannel');
+    const searchInput = document.getElementById('searchInput');
+    const listContainer = document.getElementById('listContainer');
+    const headerSticky = document.getElementById('headerSticky');
     
-    const nameInput = document.getElementById('channelName');
-    const urlInput = document.getElementById('channelUrl');
-    const addBtn = document.getElementById('addBtn');
-    
-    let hls = null;
+    let db;
+    const dbName = "MehdiLiveTVDB";
+    const storeName = "user_settings";
 
-    // লোকাল স্টোরেজে ডেটা সেভ করার ফাংশন
-    function saveChannelsToStorage() {
+    let txtLinks = []; 
+    let currentTab = 'all'; 
+    let searchQuery = ''; 
+    let hls = null;
+    let activeUrl = "";
+
+    const colors = ['#00bcd4', '#ff4081', '#4caf50', '#ff9800', '#9c27b0', '#e91e63', '#009688', '#3f51b5'];
+
+    // স্ক্রল ট্র্যাকিং (মোবাইলে ডাউনলোড ও সার্চ বক্স অটো-হাইড করার কোড)
+    let lastScrollTop = 0;
+    listContainer.addEventListener('scroll', () => {
+        let scrollTop = listContainer.scrollTop;
+        if (scrollTop > lastScrollTop && scrollTop > 50) {
+            headerSticky.classList.add('hide');
+        } else {
+            headerSticky.classList.remove('hide');
+        }
+        lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;
+    });
+
+    // ১. ডাটাবেস সেটআপ
+    const request = indexedDB.open(dbName, 1);
+    request.onupgradeneeded = function(e) {
+        db = e.target.result;
+        if (!db.objectStoreNames.contains(storeName)) {
+            db.createObjectStore(storeName, { keyPath: "url" });
+        }
+    };
+    request.onsuccess = function(e) {
+        db = e.target.result;
+        fetchPlaylist(); 
+    };
+
+    // ২. লিংক থেকে নাম বের করার ফাংশন
+    function extractChannelName(url, fallbackCount) {
         try {
-            localStorage.setItem('tv_channels', JSON.stringify(channels));
+            const urlObj = new URL(url);
+            const pathParts = urlObj.pathname.split('/').filter(p => p !== "");
+            if (pathParts.length > 0) {
+                let detectedName = pathParts[pathParts.length - 1];
+                if (detectedName.toLowerCase().includes('.m3u8')) {
+                    detectedName = pathParts[pathParts.length - 2] || detectedName;
+                }
+                return detectedName.trim();
+            }
         } catch (e) {
-            alert("আপনার ব্রাউজার ডেটা সেভ করা ব্লক করছে। দয়া করে ইনকগনিটো মোড বন্ধ করুন বা ব্রাউজার সেটিংস চেক করুন।");
+            console.error(e);
+        }
+        return `Channel ${fallbackCount}`;
+    }
+
+    // ৩. playlist.txt ফাইল পড়া
+    async function fetchPlaylist() {
+        try {
+            const response = await fetch('playlist.txt');
+            if (!response.ok) throw new Error("playlist.txt ফাইলটি পাওয়া যায়নি!");
+            const textData = await response.text();
+            
+            const lines = textData.split('\n');
+            let count = 1;
+            lines.forEach(line => {
+                const trimmedLine = line.trim();
+                if (trimmedLine !== "") {
+                    if (trimmedLine.includes(',')) {
+                        const parts = trimmedLine.split(',');
+                        txtLinks.push({ defaultName: parts[0].trim(), url: parts[1].trim() });
+                    } else if (trimmedLine.startsWith('http')) {
+                        const autoDetectedName = extractChannelName(trimmedLine, count);
+                        txtLinks.push({ defaultName: autoDetectedName, url: trimmedLine });
+                        count++;
+                    }
+                }
+            });
+
+            loadUserSettingsAndRender();
+        } catch (error) {
+            console.error(error);
         }
     }
 
-    // চ্যানেল লিস্ট স্ক্রিনে দেখানোর ফাংশন
-    function renderChannels() {
-        channelListEl.innerHTML = ''; 
-        
-        channels.forEach((channel, index) => {
-            const li = document.createElement('li');
-            li.classList.add('channel-item');
-            
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = channel.name;
-            nameSpan.style.flexGrow = "1";
-            nameSpan.style.cursor = "pointer";
-            
-            nameSpan.addEventListener('click', () => {
-                document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
-                li.classList.add('active');
-                playStream(channel.url, channel.name);
-            });
-            
-            const delBtn = document.createElement('button');
-            delBtn.textContent = "মুছুন";
-            delBtn.classList.add('delete-btn');
-            delBtn.addEventListener('click', (e) => {
-                e.stopPropagation(); 
-                deleteChannel(index);
+    // ৪. কম্বাইন ডেটা
+    function loadUserSettingsAndRender() {
+        const transaction = db.transaction([storeName], "readonly");
+        const store = transaction.objectStore(storeName);
+        const getAllRequest = store.getAll();
+
+        getAllRequest.onsuccess = function() {
+            const savedData = getAllRequest.result;
+            const savedMap = new Map(savedData.map(item => [item.url, item]));
+
+            window.finalChannels = txtLinks.map(item => {
+                const userSetup = savedMap.get(item.url);
+                return {
+                    url: item.url,
+                    name: userSetup && userSetup.customName ? userSetup.customName : item.defaultName,
+                    isFavorite: userSetup ? userSetup.isFavorite : false
+                };
             });
 
-            li.appendChild(nameSpan);
-            li.appendChild(delBtn);
-            channelListEl.appendChild(li);
-        });
+            renderChannels();
 
-        // ডেটা সেভ করা
-        saveChannelsToStorage();
+            if (window.finalChannels.length > 0 && activeUrl === "") {
+                playStream(window.finalChannels[0].url, window.finalChannels[0].name);
+                activeUrl = window.finalChannels[0].url;
+                renderChannels();
+            }
+        };
     }
 
-    // নতুন চ্যানেল অ্যাড করার ফাংশন
-    addBtn.addEventListener('click', () => {
-        const name = nameInput.value.trim();
-        const url = urlInput.value.trim();
+    // ৫. লিস্ট রেন্ডার
+    function renderChannels() {
+        channelListEl.innerHTML = '';
+        let filteredChannels = window.finalChannels || [];
+        
+        if (currentTab === 'fav') filteredChannels = filteredChannels.filter(c => c.isFavorite);
+        if (searchQuery !== '') {
+            filteredChannels = filteredChannels.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
+        }
 
-        if (name === '' || url === '') {
-            alert('দয়া করে নাম এবং লিঙ্ক দুটিই সঠিকভাবে দিন!');
+        if (filteredChannels.length === 0) {
+            channelListEl.innerHTML = `<li style="padding:20px; color:#aaa; text-align:center;">কোনো চ্যানেল পাওয়া যায়নি</li>`;
             return;
         }
 
-        // নতুন চ্যানেল লিস্টে যোগ করা
-        channels.push({ name: name, url: url });
-        
-        // ইনপুট বক্স খালি করা
-        nameInput.value = '';
-        urlInput.value = '';
+        filteredChannels.forEach((channel) => {
+            const li = document.createElement('li');
+            li.classList.add('channel-item');
+            if (channel.url === activeUrl) li.classList.add('active');
 
-        renderChannels(); 
-        
-        // নতুন চ্যানেলটি প্লে করা
-        const lastIndex = channels.length - 1;
-        playStream(url, name);
-        
-        setTimeout(() => {
-            const items = document.querySelectorAll('.channel-item');
-            if(items.length > 0) items[lastIndex].classList.add('active');
-        }, 50);
-    });
+            const infoBox = document.createElement('div');
+            infoBox.classList.add('channel-info-box');
+            infoBox.addEventListener('click', () => {
+                activeUrl = channel.url;
+                playStream(channel.url, channel.name);
+                renderChannels();
+                if(window.innerWidth <= 768) window.scrollTo({top: 0, behavior: 'smooth'});
+            });
 
-    // চ্যানেল ডিলিট করার ফাংশন
-    function deleteChannel(index) {
-        if(confirm("আপনি কি নিশ্চিতভাবে এই চ্যানেলটি মুছে ফেলতে চান?")) {
-            channels.splice(index, 1);
-            renderChannels();
-            // প্রথম চ্যানেলটি আবার প্লে করা যদি কোনো চ্যানেল বাকি থাকে
-            if(channels.length > 0) {
-                playStream(channels[0].url, channels[0].name);
-                const firstItem = document.querySelector('.channel-item');
-                if(firstItem) firstItem.classList.add('active');
-            } else {
-                video.src = '';
-                playingChannelEl.textContent = 'কোনো চ্যানেল সিলেক্ট করা নেই';
-            }
-        }
+            const logoEl = document.createElement('div');
+            logoEl.classList.add('channel-logo');
+            logoEl.textContent = channel.name.charAt(0);
+            const colorIndex = Math.abs(channel.name.charCodeAt(0)) % colors.length;
+            logoEl.style.backgroundColor = colors[colorIndex];
+
+            const nameSpan = document.createElement('span');
+            nameSpan.classList.add('channel-name');
+            nameSpan.textContent = channel.name;
+
+            infoBox.appendChild(logoEl);
+            infoBox.appendChild(nameSpan);
+
+            const btnGroup = document.createElement('div');
+            btnGroup.classList.add('action-btns');
+
+            const editBtn = document.createElement('button');
+            editBtn.classList.add('edit-btn');
+            editBtn.innerHTML = "✏️";
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                renameChannel(channel.url, channel.name);
+            });
+
+            const favBtn = document.createElement('button');
+            favBtn.classList.add('fav-btn');
+            favBtn.innerHTML = "★";
+            if (channel.isFavorite) favBtn.classList.add('is-fav');
+            favBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleFavorite(channel.url, !channel.isFavorite, channel.name);
+            });
+
+            btnGroup.appendChild(editBtn);
+            btnGroup.appendChild(favBtn);
+            
+            li.appendChild(infoBox);
+            li.appendChild(btnGroup);
+            channelListEl.appendChild(li);
+        });
     }
 
-    // ভিডিও প্লে করার মেইন ফাংশন
+    window.onSearchInput = function() {
+        searchQuery = searchInput.value.trim();
+        renderChannels();
+    };
+
+    window.switchTab = function(tab) {
+        currentTab = tab;
+        document.getElementById('allTabBtn').classList.toggle('active', tab === 'all');
+        document.getElementById('favTabBtn').classList.toggle('active', tab === 'fav');
+        renderChannels();
+    };
+
+    function renameChannel(url, currentName) {
+        const newName = prompt(`"${currentName}" এর জন্য একটি নতুন নাম দিন:`, currentName);
+        if (newName === null) return;
+        const finalName = newName.trim() === "" ? currentName : newName.trim();
+
+        const transaction = db.transaction([storeName], "readwrite");
+        const store = transaction.objectStore(storeName);
+        const getReq = store.get(url);
+        getReq.onsuccess = function() {
+            const data = getReq.result || { url: url, isFavorite: false };
+            data.customName = finalName;
+            store.put(data).onsuccess = function() {
+                if(url === activeUrl) playingChannelEl.textContent = finalName;
+                loadUserSettingsAndRender();
+            };
+        };
+    }
+
+    function toggleFavorite(url, favStatus, currentName) {
+        const transaction = db.transaction([storeName], "readwrite");
+        const store = transaction.objectStore(storeName);
+        const getReq = store.get(url);
+        getReq.onsuccess = function() {
+            const data = getReq.result || { url: url, customName: currentName };
+            data.isFavorite = favStatus;
+            store.put(data).onsuccess = function() { loadUserSettingsAndRender(); };
+        };
+    }
+
+    window.downloadUpdatedPlaylist = function() {
+        if (!window.finalChannels || window.finalChannels.length === 0) {
+            alert("প্লেলিস্টে কোনো ডেটা নেই!");
+            return;
+        }
+        let fileContent = "";
+        window.finalChannels.forEach(channel => {
+            fileContent += `${channel.name},${channel.url}\n`;
+        });
+        const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
+        const tempAnchor = document.createElement("a");
+        tempAnchor.href = URL.createObjectURL(blob);
+        tempAnchor.download = "playlist.txt";
+        document.body.appendChild(tempAnchor);
+        tempAnchor.click();
+        document.body.removeChild(tempAnchor);
+    };
+
     function playStream(url, name) {
         playingChannelEl.textContent = name;
-
-        if (hls) {
-            hls.destroy();
-        }
+        if (hls) hls.destroy();
 
         if (Hls.isSupported()) {
             hls = new Hls();
@@ -294,24 +537,9 @@
         } 
         else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = url;
-            video.addEventListener('loadedmetadata', () => {
-                video.play().catch(e => console.log("Autoplay blocked:", e));
-            });
-        } else {
-            alert("আপনার ব্রাউজারে এই ভিডিওটি সাপোর্ট করছে না।");
+            video.addEventListener('loadedmetadata', () => { video.play().catch(e => console.log(e)); });
         }
     }
-
-    document.addEventListener("DOMContentLoaded", () => {
-        renderChannels();
-        if(channels.length > 0) {
-            playStream(channels[0].url, channels[0].name);
-            setTimeout(() => {
-                const firstItem = document.querySelector('.channel-item');
-                if(firstItem) firstItem.classList.add('active');
-            }, 50);
-        }
-    });
 </script>
 
 </body>
