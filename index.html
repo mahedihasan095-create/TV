@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>মেহেদী লাইভ টিভি প্লেয়ার</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dashjs@latest/dist/dash.all.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -16,16 +17,16 @@
             background-color: #141414;
             color: #fff;
             display: flex;
-            flex-direction: row-reverse; /* ডেক্সটপে চ্যানেল লিস্ট ডান পাশে এবং প্লেয়ার বাম পাশে নেওয়ার ম্যাজিক */
+            flex-direction: row-reverse; /* ডেক্সটপে চ্যানেল লিস্ট ডান পাশে */
             height: 100vh;
             overflow: hidden;
         }
         
-        /* ডেক্সটপ লেআউট (ডান পাশের চ্যানেল লিস্ট সাইডবার) */
+        /* ডেক্সটপ লেআউট */
         .sidebar {
             width: 340px;
             background-color: #1f1f1f;
-            border-left: 2px solid #2d2d2d; /* বর্ডার বাম পাশে দেওয়া হয়েছে */
+            border-left: 2px solid #2d2d2d;
             display: flex;
             flex-direction: column;
             z-index: 10;
@@ -40,11 +41,11 @@
         }
         .header-sticky.hide {
             transform: translateY(-100%);
-            margin-top: -60px; /* বাটন চলে যাওয়ায় উচ্চতা কমানো হয়েছে */
+            margin-top: -60px;
         }
 
         .search-box {
-            padding: 12px; /* সার্চ বক্সের প্যাডিং সুন্দর করা হয়েছে */
+            padding: 12px;
         }
         .search-input {
             width: 100%;
@@ -201,10 +202,10 @@
             font-weight: bold;
         }
 
-        /* 📱 বিশেষ মোবাইল ভিউ সিএসএস */
+        /* 📱 মোবাইল ভিউ */
         @media (max-width: 768px) {
             body {
-                flex-direction: column; /* মোবাইলে আগের মতো স্বাভাবিক উপর-নিচ লেআউট থাকবে */
+                flex-direction: column;
             }
             
             .main-content {
@@ -276,11 +277,12 @@
     let currentTab = 'all'; 
     let searchQuery = ''; 
     let hls = null;
+    let dashPlayer = null; // DASH প্লেয়ার গ্লোবাল ভেরিয়েবল
     let activeUrl = "";
 
     const colors = ['#00bcd4', '#ff4081', '#4caf50', '#ff9800', '#9c27b0', '#e91e63', '#009688', '#3f51b5'];
 
-    // স্ক্রল ট্র্যাকিং (মোবাইলে সার্চ বক্স অটো-হাইড করার কোড)
+    // স্ক্রল ট্র্যাকিং
     let lastScrollTop = 0;
     listContainer.addEventListener('scroll', () => {
         let scrollTop = listContainer.scrollTop;
@@ -305,14 +307,13 @@
         fetchPlaylist(); 
     };
 
-    // ২. লিংক থেকে নাম বের করার ব্যাকআপ ফাংশন
     function extractChannelName(url, fallbackCount) {
         try {
             const urlObj = new URL(url);
             const pathParts = urlObj.pathname.split('/').filter(p => p !== "");
             if (pathParts.length > 0) {
                 let detectedName = pathParts[pathParts.length - 1];
-                if (detectedName.toLowerCase().includes('.m3u8')) {
+                if (detectedName.toLowerCase().includes('.m3u8') || detectedName.toLowerCase().includes('.mpd')) {
                     detectedName = pathParts[pathParts.length - 2] || detectedName;
                 }
                 return detectedName.trim();
@@ -323,7 +324,7 @@
         return `Channel ${fallbackCount}`;
     }
 
-    // ৩. playlist.m3u ফাইল পড়া এবং লোগো-নাম আলাদা করা
+    // ২. playlist.m3u ফাইল পড়া
     async function fetchPlaylist() {
         try {
             const response = await fetch('playlist.m3u');
@@ -376,7 +377,7 @@
         }
     }
 
-    // ৪. ইউজার ডেটা কম্বাইন করা
+    // ৩. ইউজার ডেটা কম্বাইন করা
     function loadUserSettingsAndRender() {
         const transaction = db.transaction([storeName], "readonly");
         const store = transaction.objectStore(storeName);
@@ -407,7 +408,7 @@
         };
     }
 
-    // ৫. লিস্ট এবং ইমেজ লোগো রেন্ডার করা
+    // ৪. লিস্ট রেন্ডার করা
     function renderChannels() {
         channelListEl.innerHTML = '';
         let filteredChannels = window.finalChannels || [];
@@ -537,21 +538,43 @@
         };
     }
 
+    // ৫. স্মার্ট ভিডিও প্লে স্ট্রিমিং ফাংশন (HLS এবং DASH উভয়ই হ্যান্ডেল করবে)
     function playStream(url, name) {
         playingChannelEl.textContent = name;
-        if (hls) hls.destroy();
+        
+        // আগের কোনো প্লেয়ার সেশন চালু থাকলে তা বন্ধ ও ডিলিট করা
+        if (hls) {
+            hls.destroy();
+            hls = null;
+        }
+        if (dashPlayer) {
+            dashPlayer.reset();
+            dashPlayer = null;
+        }
 
-        if (Hls.isSupported()) {
-            hls = new Hls();
-            hls.loadSource(url);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                video.play().catch(e => console.log("Autoplay blocked:", e));
+        const isDash = url.toLowerCase().includes('.mpd');
+
+        if (isDash) {
+            // ১. DASH (.mpd) প্লে করার লজিক
+            dashPlayer = dashjs.MediaPlayer().create();
+            dashPlayer.initialize(video, url, true);
+            dashPlayer.on(dashjs.MediaPlayer.events.ERROR, function(e) {
+                console.error("DASH Playback Error: ", e);
             });
-        } 
-        else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = url;
-            video.addEventListener('loadedmetadata', () => { video.play().catch(e => console.log(e)); });
+        } else {
+            // ২. HLS (.m3u8) প্লে করার লজিক
+            if (Hls.isSupported()) {
+                hls = new Hls();
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(e => console.log("Autoplay blocked:", e));
+                });
+            } 
+            else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                video.addEventListener('loadedmetadata', () => { video.play().catch(e => console.log(e)); });
+            }
         }
     }
 </script>
