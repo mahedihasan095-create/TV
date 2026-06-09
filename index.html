@@ -44,12 +44,16 @@
             margin-top: -60px;
         }
 
+        /* 🔍 সার্চ বক্স এবং ক্রস বাটন কন্টেইনার */
         .search-box {
             padding: 12px;
+            position: relative;
+            display: flex;
+            align-items: center;
         }
         .search-input {
             width: 100%;
-            padding: 10px 12px;
+            padding: 10px 35px 10px 12px; /* ডানপাশে ক্রস বাটনের জন্য একটু জায়গা রাখা হয়েছে */
             border: 1px solid #444;
             border-radius: 4px;
             background-color: #222;
@@ -59,6 +63,19 @@
         }
         .search-input:focus {
             border-color: #00bcd4;
+        }
+        .clear-search-btn {
+            position: absolute;
+            right: 22px;
+            background: none;
+            border: none;
+            color: #aaa;
+            font-size: 1rem;
+            cursor: pointer;
+            display: none; /* শুরুতে লুকানো থাকবে */
+        }
+        .clear-search-btn:hover {
+            color: #fff;
         }
 
         /* ট্যাব সিস্টেম */
@@ -102,9 +119,15 @@
             justify-content: space-between;
             align-items: center;
             font-size: 0.95rem;
+            outline: none; /* টিভি বক্সের ফোকাস আউটলাইন সুন্দর করার জন্য */
         }
         .channel-item:hover {
             background-color: #2a2a2a;
+        }
+        /* 📺 টিভি রিমোটের এরো কি দিয়ে সিলেক্ট করলে এই কালার দেখাবে */
+        .channel-item:focus {
+            background-color: #333;
+            border-left: 4px solid #ff4081; 
         }
         .channel-item.active {
             background-color: #22444d;
@@ -248,6 +271,7 @@
         <div class="header-sticky" id="headerSticky">
             <div class="search-box">
                 <input type="text" id="searchInput" class="search-input" placeholder="চ্যানেল খুঁজুন (Search)..." oninput="onSearchInput()">
+                <button id="clearSearchBtn" class="clear-search-btn" onclick="clearSearch()">❌</button>
             </div>
         </div>
         
@@ -266,6 +290,7 @@
     const channelListEl = document.getElementById('channelList');
     const playingChannelEl = document.getElementById('playingChannel');
     const searchInput = document.getElementById('searchInput');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
     const listContainer = document.getElementById('listContainer');
     const headerSticky = document.getElementById('headerSticky');
     
@@ -277,8 +302,9 @@
     let currentTab = 'all'; 
     let searchQuery = ''; 
     let hls = null;
-    let dashPlayer = null; // DASH প্লেয়ার গ্লোবাল ভেরিয়েবল
+    let dashPlayer = null;
     let activeUrl = "";
+    let focusedIndex = -1; // রিমোট ট্র্যাকিং-এর জন্য
 
     const colors = ['#00bcd4', '#ff4081', '#4caf50', '#ff9800', '#9c27b0', '#e91e63', '#009688', '#3f51b5'];
 
@@ -423,18 +449,33 @@
             return;
         }
 
-        filteredChannels.forEach((channel) => {
+        filteredChannels.forEach((channel, index) => {
             const li = document.createElement('li');
             li.classList.add('channel-item');
-            if (channel.url === activeUrl) li.classList.add('active');
+            li.tabIndex = 0; // অ্যান্ড্রয়েড টিভি বক্স বা কিবোর্ড ফোকাস নেওয়ার জন্য এটি আবশ্যিক
+            li.setAttribute('data-index', index);
+            
+            if (channel.url === activeUrl) {
+                li.classList.add('active');
+            }
 
             const infoBox = document.createElement('div');
             infoBox.classList.add('channel-info-box');
-            infoBox.addEventListener('click', () => {
+            
+            // রিমোটের ইন্টার বা ক্লিক অ্যাকশন
+            const selectAction = () => {
                 activeUrl = channel.url;
+                focusedIndex = index;
                 playStream(channel.url, channel.name);
                 renderChannels();
                 if(window.innerWidth <= 768) window.scrollTo({top: 0, behavior: 'smooth'});
+            };
+
+            infoBox.addEventListener('click', selectAction);
+            li.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    selectAction();
+                }
             });
 
             let logoEl;
@@ -464,6 +505,7 @@
             const editBtn = document.createElement('button');
             editBtn.classList.add('edit-btn');
             editBtn.innerHTML = "✏️";
+            editBtn.tabIndex = -1; // রিমোট যাতে সরাসরি বাটনে চলে না যায়
             editBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 renameChannel(channel.url, channel.name);
@@ -472,6 +514,7 @@
             const favBtn = document.createElement('button');
             favBtn.classList.add('fav-btn');
             favBtn.innerHTML = "★";
+            favBtn.tabIndex = -1;
             if (channel.isFavorite) favBtn.classList.add('is-fav');
             favBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -485,6 +528,14 @@
             li.appendChild(btnGroup);
             channelListEl.appendChild(li);
         });
+
+        // ফোকাস আগের জায়গায় ধরে রাখা (যাতে রিমোট নেভিগেশন স্মুথ থাকে)
+        if (focusedIndex !== -1) {
+            const items = channelListEl.getElementsByClassName('channel-item');
+            if (items[focusedIndex]) {
+                items[focusedIndex].focus();
+            }
+        }
     }
 
     function replaceWithTextLogo(element, name) {
@@ -497,15 +548,33 @@
         element.replaceWith(textDiv);
     }
 
+    // 🔍 সার্চ ইনপুট হ্যান্ডেলার এবং ক্রস বাটন শো/হাইড লজিক
     window.onSearchInput = function() {
         searchQuery = searchInput.value.trim();
+        if (searchQuery !== '') {
+            clearSearchBtn.style.display = 'block'; // কিছু লিখলে ক্রস বাটন দেখাবে
+        } else {
+            clearSearchBtn.style.display = 'none';
+        }
+        focusedIndex = -1; // সার্চ করার পর ইন্ডেক্স রিসেট
         renderChannels();
+    };
+
+    // ❌ সার্চ মুছে ফেলার ফাংশন
+    window.clearSearch = function() {
+        searchInput.value = '';
+        searchQuery = '';
+        clearSearchBtn.style.display = 'none'; // ক্রস বাটন হাইড
+        focusedIndex = -1;
+        renderChannels();
+        searchInput.focus(); // সার্চ বক্সে আবার ফোকাস ফিরিয়ে দেওয়া
     };
 
     window.switchTab = function(tab) {
         currentTab = tab;
         document.getElementById('allTabBtn').classList.toggle('active', tab === 'all');
         document.getElementById('favTabBtn').classList.toggle('active', tab === 'fav');
+        focusedIndex = -1;
         renderChannels();
     };
 
@@ -538,11 +607,34 @@
         };
     }
 
-    // ৫. স্মার্ট ভিডিও প্লে স্ট্রিমিং ফাংশন (HLS এবং DASH উভয়ই হ্যান্ডেল করবে)
+    // 📺 অ্যান্ড্রয়েড টিভি বক্স / রিমোট কন্ট্রোল কি-বোর্ড নেভিগেশন ইঞ্জিন 
+    document.addEventListener('keydown', (e) => {
+        const items = channelListEl.getElementsByClassName('channel-item');
+        if (items.length === 0) return;
+
+        // যদি বর্তমানে সার্চ বক্সে ফোকাস না থাকে এবং রিমোটের আপ বা ডাউন বাটন চাপা হয়
+        if (document.activeElement !== searchInput) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                focusedIndex++;
+                if (focusedIndex >= items.length) focusedIndex = 0; // লিস্টের শেষে গেলে আবার প্রথমে আসবে
+                items[focusedIndex].focus();
+                items[focusedIndex].scrollIntoView({ block: 'nearest' }); // অটোমেটিক স্ক্রল হবে
+            } 
+            else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                focusedIndex--;
+                if (focusedIndex < 0) focusedIndex = items.length - 1; // প্রথমে থাকলে একদম শেষে চলে যাবে
+                items[focusedIndex].focus();
+                items[focusedIndex].scrollIntoView({ block: 'nearest' });
+            }
+        }
+    });
+
+    // ৫. ভিডিও স্ট্রিমিং ফাংশন (HLS & DASH)
     function playStream(url, name) {
         playingChannelEl.textContent = name;
         
-        // আগের কোনো প্লেয়ার সেশন চালু থাকলে তা বন্ধ ও ডিলিট করা
         if (hls) {
             hls.destroy();
             hls = null;
@@ -555,14 +647,12 @@
         const isDash = url.toLowerCase().includes('.mpd');
 
         if (isDash) {
-            // ১. DASH (.mpd) প্লে করার লজিক
             dashPlayer = dashjs.MediaPlayer().create();
             dashPlayer.initialize(video, url, true);
             dashPlayer.on(dashjs.MediaPlayer.events.ERROR, function(e) {
                 console.error("DASH Playback Error: ", e);
             });
         } else {
-            // ২. HLS (.m3u8) প্লে করার লজিক
             if (Hls.isSupported()) {
                 hls = new Hls();
                 hls.loadSource(url);
